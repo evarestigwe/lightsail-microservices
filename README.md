@@ -125,6 +125,21 @@ SonarQube & Trivy CLI (for local scans)
 1️⃣ Configure Variables
 Edit terraform/variables.tf and set your values:
 
+
+
+Terraform will:
+
+Spin up the master and worker Lightsail instances
+
+Run install_k3s.sh remotely to set up the cluster
+
+Create the load balancer + HTTPS cert (via Lightsail + Let’s Encrypt)
+
+Deploy autoscaling Lambda for CPU/memory metrics
+
+
+
+
 hcl
 Copy code
 aws_region       = "ap-southeast-1"
