@@ -1,0 +1,29 @@
+# Common VCS files
+.git/
+.hg/
+.svn/
+.bzr/
+.DS_Store
+
+# Editor files
+*.swp
+*.bak
+*.tmp
+*.orig
+*.idea/
+*.vscode/
+
+# Test files
+test/
+tests/
+
+# CI/CD configs
+.github/
+.gitlab-ci.yml
+
+# Local config
+values.local.yaml
+*.env
+*.tf
+*.tfstate
+terraform/

@@ -1,0 +1,14 @@
+global:
+  ingress:
+    loadBalancerDNS: staging-lb.example.com
+
+payment-service:
+  replicaCount: 2
+user-auth-service:
+  replicaCount: 2
+order-service:
+  replicaCount: 2
+product-service:
+  replicaCount: 2
+cart-service:
+  replicaCount: 2

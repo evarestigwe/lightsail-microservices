@@ -1,0 +1,220 @@
+name: Microservice CI/CD with Canary, Rollback, Tests, and Teams Alerts
+
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - main
+    paths:
+      - 'payment-service/**'
+      - 'user-auth-service/**'
+      - 'order-service/**'
+      - 'product-service/**'
+      - 'cart-service/**'
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+    paths:
+      - 'payment-service/**'
+      - 'user-auth-service/**'
+      - 'order-service/**'
+      - 'product-service/**'
+      - 'cart-service/**'
+
+env:
+  REGISTRY: docker.io
+  DOCKER_ORG: yourdockerhubusername
+  CHART_BASE: charts/microservices/charts
+  MICROSERVICES: payment-service user-auth-service order-service product-service cart-service
+  DEFAULT_SMOKE_PATH: "/health"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  detect-changes:
+    name: Detect Changed Microservice
+    runs-on: ubuntu-latest
+    outputs:
+      service: ${{ steps.detect.outputs.service }}
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        run: |
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD || true)
+          echo "Changed files: $CHANGED_FILES"
+          SERVICE=""
+          for s in $MICROSERVICES; do
+            if echo "$CHANGED_FILES" | grep -q "^${s}/"; then
+              SERVICE=$s
+              break
+            fi
+          done
+
+          if [ -z "$SERVICE" ]; then
+            echo "No microservice changes detected."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Detected service: $SERVICE"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "service=$SERVICE" >> $GITHUB_OUTPUT
+          fi
+
+  build-test-scan-push:
+    name: Build → Test → Scan → Push Image
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed == 'true'
+    env:
+      SERVICE: ${{ needs.detect-changes.outputs.service }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+        if: ${{ env.SERVICE != 'order-service' }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+        if: ${{ env.SERVICE == 'order-service' }}
+
+      - name: Run Unit Tests
+        working-directory: ./${{ env.SERVICE }}
+        run: |
+          if [ -f package.json ]; then
+            npm ci && npm test
+          elif [ -f go.mod ]; then
+            go test ./...
+          else
+            echo "No test config found — skipping."
+          fi
+
+      - name: Build Docker Image
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }}:${{ env.IMAGE_TAG }}
+          docker build -t $IMAGE ./${{ env.SERVICE }}
+
+      - name: Trivy Security Scan
+        uses: aquasecurity/trivy-action@v0.20.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }}:${{ env.IMAGE_TAG }}
+          format: 'table'
+          exit-code: '1'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push Docker Image
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - run: |
+          docker push ${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }}:${{ env.IMAGE_TAG }}
+
+  deploy:
+    name: Deploy via Helm (with Canary, Rollback, and Notifications)
+    runs-on: ubuntu-latest
+    needs: build-test-scan-push
+    if: needs.detect-changes.outputs.changed == 'true'
+    env:
+      SERVICE: ${{ needs.detect-changes.outputs.service }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 --decode > kubeconfig
+          echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
+
+      - name: Setup Helm
+        run: |
+          curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - id: env
+        run: |
+          REF=${GITHUB_REF_NAME}
+          if [[ "$REF" == "dev" ]]; then
+            echo "name=dev" >> $GITHUB_OUTPUT
+          elif [[ "$REF" == "staging" ]]; then
+            echo "name=staging" >> $GITHUB_OUTPUT
+          else
+            echo "name=prod" >> $GITHUB_OUTPUT
+          fi
+
+      - id: annotations
+        run: |
+          echo "commit=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> $GITHUB_OUTPUT
+          echo "actor=${GITHUB_ACTOR}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Dev/Staging
+        if: steps.env.outputs.name != 'prod'
+        run: |
+          helm upgrade --install $SERVICE ${CHART_BASE}/${SERVICE} \
+            --namespace ${{ steps.env.outputs.name }} --create-namespace \
+            --values charts/microservices/values-${{ steps.env.outputs.name }}.yaml \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }} \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --set release.annotations.commit=${{ steps.annotations.outputs.commit }} \
+            --set release.annotations.run_url=${{ steps.annotations.outputs.run_url }} \
+            --set release.annotations.actor=${{ steps.annotations.outputs.actor }} \
+            --atomic --wait --timeout 180s
+
+      - name: Canary Deploy (Prod)
+        if: steps.env.outputs.name == 'prod'
+        env:
+          TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          LB_DNS: ${{ secrets.LOAD_BALANCER_DNS }}
+        run: |
+          set -e
+          IMAGE=${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }}:${{ env.IMAGE_TAG }}
+          helm upgrade --install ${SERVICE}-canary ${CHART_BASE}/${SERVICE} \
+            --namespace prod --create-namespace \
+            --values charts/microservices/values-prod.yaml \
+            --set replicaCount=1 \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }} \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --atomic --wait --timeout 120s
+
+          sleep 10
+          URL="https://${LB_DNS}${DEFAULT_SMOKE_PATH}"
+          STATUS=$(curl -k -s -o /dev/null -w "%{http_code}" $URL)
+          echo "Smoke test returned $STATUS"
+
+          if [[ $STATUS -ge 200 && $STATUS -lt 400 ]]; then
+            echo "✅ Canary succeeded, promoting..."
+            helm upgrade --install $SERVICE ${CHART_BASE}/${SERVICE} \
+              --namespace prod \
+              --values charts/microservices/values-prod.yaml \
+              --set image.repository=${{ env.REGISTRY }}/${{ env.DOCKER_ORG }}/${{ env.SERVICE }} \
+              --set image.tag=${{ env.IMAGE_TAG }} \
+              --atomic --wait --timeout 180s
+            helm uninstall ${SERVICE}-canary -n prod
+          else
+            echo "❌ Canary failed, rolling back and notifying Teams"
+            helm uninstall ${SERVICE}-canary -n prod
+            curl -s -X POST -H "Content-Type: application/json" \
+              -d "{\"@type\":\"MessageCard\",\"@context\":\"https://schema.org/extensions\",\"summary\":\"Rollback Triggered\",\"themeColor\":\"FF0000\",\"title\":\"Canary failed for ${SERVICE}\",\"text\":\"Smoke test failed (HTTP ${STATUS}). Rolled back to previous version.\"}" \
+              "${TEAMS_WEBHOOK}"
+            exit 1
+          fi
+
+      - name: Notify Success to Teams
+        if: success()
+        run: |
+          curl -s -X POST -H "Content-Type: application/json" \
+            -d "{\"@type\":\"MessageCard\",\"@context\":\"https://schema.org/extensions\",\"summary\":\"Deployment Success\",\"themeColor\":\"00B050\",\"title\":\"✅ Deployment Success: ${SERVICE}\",\"text\":\"Environment: ${{ steps.env.outputs.name }}<br>Commit: ${{ github.sha }}\"}" \
+            "${{ secrets.TEAMS_WEBHOOK_URL }}"

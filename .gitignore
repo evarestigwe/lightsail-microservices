@@ -1,0 +1,110 @@
+# ==========================
+# Global Ignore
+# ==========================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.bak
+*.old
+*.orig
+
+# ==========================
+# Node.js
+# ==========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================
+# Go
+# ==========================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+vendor/
+coverage.out
+go.sum
+
+# ==========================
+# Docker
+# ==========================
+.dockerignore
+Dockerfile.*.bak
+docker-compose.override.yml
+
+# ==========================
+# Terraform
+# ==========================
+*.tfstate
+*.tfstate.*
+*.terraform/
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+terraform.tfvars.json
+override.tf
+override.tf.json
+crash.log
+*.backup
+lambda_package.zip
+
+# ==========================
+# Helm / K8s
+# ==========================
+*.tgz
+charts/**/charts/
+charts/**/tmp/
+charts/**/templates/*.bak
+values.local.yaml
+kubeconfig
+kubeconfig.*
+
+# ==========================
+# CI/CD
+# ==========================
+.github/workflows/*.bak
+*.env
+.env.local
+.env.dev
+.env.staging
+.env.prod
+.envrc
+.kube/
+cache/
+tmp/
+
+# ==========================
+# SonarQube / Reports
+# ==========================
+.sonar/
+coverage/
+reports/
+test-results/
+.trivy/
+.trivy-cache/
+.trivyignore
+
+# ==========================
+# VSCode / JetBrains
+# ==========================
+.vscode/
+.idea/
+*.iml
+
+# ==========================
+# System
+# ==========================
+*.zip
+*.tar.gz
+*.7z
+*.bak
+*.tmp

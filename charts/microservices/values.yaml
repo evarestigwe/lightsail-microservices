@@ -1,0 +1,49 @@
+global:
+  ingress:
+    tlsSecretName: lightsail-lb-tls
+    loadBalancerDNS: my-lightsail-lb.example.com
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+commonConfig:
+  LOG_LEVEL: info
+  DB_HOST: mydb.internal
+  CACHE_URL: redis.internal
+
+commonSecrets:
+  DB_PASSWORD: "changeme"
+
+payment-service:
+  replicaCount: 1
+  image:
+    repository: yourdockerhubusername/payment-service
+    tag: latest
+
+user-auth-service:
+  replicaCount: 1
+  image:
+    repository: yourdockerhubusername/user-auth-service
+    tag: latest
+
+order-service:
+  replicaCount: 1
+  image:
+    repository: yourdockerhubusername/order-service
+    tag: latest
+
+product-service:
+  replicaCount: 1
+  image:
+    repository: yourdockerhubusername/product-service
+    tag: latest
+
+cart-service:
+  replicaCount: 1
+  image:
+    repository: yourdockerhubusername/cart-service
+    tag: latest

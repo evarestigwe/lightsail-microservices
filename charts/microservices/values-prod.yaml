@@ -1,0 +1,14 @@
+global:
+  ingress:
+    loadBalancerDNS: prod-lb.example.com
+
+payment-service:
+  replicaCount: 3
+user-auth-service:
+  replicaCount: 3
+order-service:
+  replicaCount: 3
+product-service:
+  replicaCount: 3
+cart-service:
+  replicaCount: 3

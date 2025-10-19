@@ -1,0 +1,21 @@
+# Ignore local Terraform cache and temp
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.backup
+*.log
+*.zip
+*.bak
+*.local
+
+# Ignore secrets and envs
+.env
+.env.*
+
+# Ignore IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

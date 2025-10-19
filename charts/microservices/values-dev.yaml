@@ -1,0 +1,21 @@
+global:
+  ingress:
+    loadBalancerDNS: dev-lb.example.com
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 125m
+      memory: 128Mi
+
+payment-service:
+  replicaCount: 1
+user-auth-service:
+  replicaCount: 1
+order-service:
+  replicaCount: 1
+product-service:
+  replicaCount: 1
+cart-service:
+  replicaCount: 1
