@@ -1,0 +1,26 @@
+replicaCount: 1
+
+image:
+  repository: yourdockerhubusername/order-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  host: order.myapp.example.com
+  path: /
+  pathType: Prefix
+
+resources: {}
+nodeSelector: {}
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  cpuUtilization: 70
+  memoryUtilization: 70

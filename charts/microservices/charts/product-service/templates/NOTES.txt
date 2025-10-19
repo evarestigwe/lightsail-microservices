@@ -1,0 +1,41 @@
+{{- $fullName := include "common.fullname" . -}}
+{{- $servicePort := .Values.service.port -}}
+{{- $ingressHost := .Values.ingress.host | default (printf "%s.%s" $fullName "example.com") -}}
+{{- $env := .Release.Namespace -}}
+
+🎉 {{ .Chart.Name | title }} successfully deployed!
+
+📦 Release Details
+-------------------
+• Name: {{ .Release.Name }}
+• Namespace: {{ .Release.Namespace }}
+• Version: {{ .Chart.Version }}
+• App Version: {{ .Chart.AppVersion }}
+• Helm Revision: {{ .Release.Revision }}
+
+🔍 Access Information
+-------------------
+{{- if .Values.ingress.enabled }}
+🌐 Ingress Host: https://{{ $ingressHost }}
+TLS Secret: {{ $.Values.global.ingress.tlsSecretName }}
+Load Balancer: {{ $.Values.global.ingress.loadBalancerDNS }}
+{{- else }}
+💻 Service (ClusterIP): {{ $fullName }}:{{ $servicePort }}
+{{- end }}
+
+🧠 Traceability
+-------------------
+Commit: {{ .Values.release.annotations.commit | default "N/A" }}
+Triggered by: {{ .Values.release.annotations.actor | default "N/A" }}
+Run URL: {{ .Values.release.annotations.run_url | default "N/A" }}
+
+💡 Next Steps
+-------------------
+👉 Check pod status:
+    kubectl get pods -n {{ .Release.Namespace }} -l app={{ include "common.name" . }}
+
+👉 View logs:
+    kubectl logs -l app={{ include "common.name" . }} -n {{ .Release.Namespace }}
+
+👉 Roll back to previous version:
+    helm rollback {{ .Release.Name }} {{ sub .Release.Revision 1 }}

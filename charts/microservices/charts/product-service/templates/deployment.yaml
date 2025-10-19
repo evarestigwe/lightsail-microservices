@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "common.fullname" . }}
+  labels:
+    app: {{ include "common.name" . }}
+  annotations:
+    {{- with .Values.release.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "common.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "common.name" . }}
+    spec:
+      containers:
+        - name: {{ include "common.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: {{ include "common.name" . }}-config
+            - secretRef:
+                name: {{ include "common.name" . }}-secrets
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
