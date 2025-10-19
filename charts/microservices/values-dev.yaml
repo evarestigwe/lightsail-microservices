@@ -19,3 +19,4 @@ product-service:
   replicaCount: 1
 cart-service:
   replicaCount: 1
+
