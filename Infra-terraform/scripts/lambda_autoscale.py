@@ -12,6 +12,21 @@ MAX_WORKERS = int(os.getenv("MAX_WORKERS"))
 
 def lambda_handler(event, context):
     print("⚙️ Autoscaler invoked")
+
+
+
+
+resource "aws_lambda_function" "lightsail_autoscaler" {
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  function_name    = "lightsail-autoscaler"
+  role             = aws_iam_role.lambda_exec_role.arn
+  handler          = "lambda_autoscale.lambda_handler"
+  runtime          = "python3.10"
+  timeout          = 60
+}
+
+
     
     # List existing workers
     instances = client.get_instances()['instances']
