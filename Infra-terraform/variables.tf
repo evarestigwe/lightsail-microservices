@@ -1,45 +1,38 @@
-variable "env" {
-  description = "Environment: dev, staging, prod"
-  type        = string
-  default     = "dev"
-}
-
 variable "aws_region" {
-  description = "AWS region for Lightsail"
+  description = "The AWS region to deploy resources in (e.g., us-east-1)"
   type        = string
-  default     = "ap-southeast-1"
+  default     = "us-east-1"
 }
 
 variable "aws_az" {
-  description = "AWS Availability Zone"
+  description = "The AWS availability zone for the Lightsail instance (e.g., us-east-1a)"
   type        = string
-  default     = "ap-southeast-1a"
-}
-
-variable "lightsail_bundle" {
-  description = "Lightsail bundle ID (ensure it exists in the region)"
-  type        = string
-  default     = "nano_1_0" # replace with a valid bundle from `aws lightsail get-bundles`
+  default     = "us-east-1a"
 }
 
 variable "ssh_public_key_path" {
-  description = "Path to SSH public key"
+  description = "Path to the SSH public key file (e.g., ~/.ssh/id_rsa.pub)"
   type        = string
-  default     = "~/.ssh/id_rsa.pub"
 }
 
 variable "ssh_private_key_path" {
-  description = "Path to SSH private key"
-  type        = string
-  default     = "~/.ssh/id_rsa"
-}
-
-variable "github_token" {
-  description = "GitHub Personal Access Token"
+  description = "Path to the SSH private key file (e.g., ~/.ssh/id_rsa)"
   type        = string
 }
 
 variable "github_repo" {
-  description = "GitHub repository name (user/repo)"
+  description = "The name of the GitHub repository (e.g., owner/repo-name)"
   type        = string
+}
+
+variable "github_token" {
+  description = "GitHub personal access token for managing Actions secrets"
+  type        = string
+  sensitive   = true
+}
+
+variable "my_ip" {
+  description = "Your public IP address in CIDR format (e.g., 203.0.113.0/32) for SSH access"
+  type        = string
+  default     = "0.0.0.0/0"  # Open for testing; replace with your IP for security
 }

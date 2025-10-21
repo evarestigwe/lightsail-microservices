@@ -21,15 +21,7 @@ provider "github" {
 }
 
 # --------------------------
-# Lightsail Key Pair
-# --------------------------
-resource "aws_lightsail_key_pair" "main" {
-  name       = "lightsail-key"
-  public_key = file(var.ssh_public_key_path)
-}
-
-# --------------------------
-# Lightsail Master Instance with injected SSH key
+# Lightsail Master Instance with injected SSH key and K3s installation
 # --------------------------
 resource "aws_lightsail_instance" "master" {
   name              = "k3s-master"
@@ -39,12 +31,33 @@ resource "aws_lightsail_instance" "master" {
 
   user_data = <<-EOT
               #!/bin/bash
+              # Set up SSH
               mkdir -p /home/ubuntu/.ssh
               echo "${file(var.ssh_public_key_path)}" >> /home/ubuntu/.ssh/authorized_keys
               chown -R ubuntu:ubuntu /home/ubuntu/.ssh
               chmod 700 /home/ubuntu/.ssh
               chmod 600 /home/ubuntu/.ssh/authorized_keys
+
+              # Install K3s (single-node master)
+              curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644
+              # Make kubeconfig accessible to ubuntu user
+              sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/kubeconfig_temp
+              sudo chown ubuntu:ubuntu /home/ubuntu/kubeconfig_temp
               EOT
+}
+
+# --------------------------
+# Open SSH port (22) on the instance
+# --------------------------
+resource "aws_lightsail_instance_public_ports" "master" {
+  instance_name = aws_lightsail_instance.master.name
+
+  port_info {
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+    cidrs     = [var.my_ip]  # Restrict to your IP for security; use "0.0.0.0/0" for testing
+  }
 }
 
 # --------------------------
@@ -90,14 +103,28 @@ resource "aws_lambda_function" "lightsail_autoscaler" {
 }
 
 # --------------------------
-# Fetch kubeconfig from master
+# Wait for instance to be ready (boot + user_data execution)
+# --------------------------
+resource "null_resource" "wait_for_instance" {
+  depends_on = [aws_lightsail_instance.master, aws_lightsail_instance_public_ports.master]
+
+  provisioner "local-exec" {
+    command = "sleep 60"  # Wait 60 seconds for boot and user_data
+  }
+}
+
+# --------------------------
+# Prepare kubeconfig on remote (and fetch it locally via SCP)
 # --------------------------
 resource "null_resource" "fetch_kubeconfig" {
-  depends_on = [aws_lightsail_instance.master]
+  depends_on = [null_resource.wait_for_instance]
 
   provisioner "remote-exec" {
     inline = [
-      "sudo cat /etc/rancher/k3s/k3s.yaml > /home/ubuntu/kubeconfig_temp"
+      # Ensure kubeconfig is prepared (user_data should have done this, but verify)
+      "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/kubeconfig_temp || true",
+      "sudo chown ubuntu:ubuntu /home/ubuntu/kubeconfig_temp",
+      "chmod 600 /home/ubuntu/kubeconfig_temp"
     ]
 
     connection {
@@ -105,20 +132,24 @@ resource "null_resource" "fetch_kubeconfig" {
       user        = "ubuntu"
       private_key = file(var.ssh_private_key_path)
       host        = aws_lightsail_instance.master.public_ip_address
+      timeout     = "5m"  # Increased timeout for safety
     }
+  }
+
+  # Fetch the kubeconfig locally via SCP
+  provisioner "local-exec" {
+    command = "scp -i ${var.ssh_private_key_path} ubuntu@${aws_lightsail_instance.master.public_ip_address}:/home/ubuntu/kubeconfig_temp ${path.module}/generated/kubeconfig"
   }
 }
 
 # --------------------------
-# Local kubeconfig file (placeholder)
+# Local kubeconfig file (now dynamic)
 # --------------------------
 resource "local_file" "kubeconfig" {
   depends_on = [null_resource.fetch_kubeconfig]
   filename   = "${path.module}/generated/kubeconfig"
-  content    = <<EOT
-# Placeholder kubeconfig.
-# In practice, fetch dynamically from master (via SCP or Terraform external script).
-EOT
+  # Content will be written by the SCP in fetch_kubeconfig; this ensures the file exists
+  content    = fileexists("${path.module}/generated/kubeconfig") ? file("${path.module}/generated/kubeconfig") : "# Placeholder - fetched via SCP"
 }
 
 # --------------------------
@@ -127,7 +158,6 @@ EOT
 resource "github_actions_secret" "kubeconfig_secret" {
   repository      = var.github_repo
   secret_name     = "KUBECONFIG"
-  # Use the content attribute instead of reading a file
   plaintext_value = base64encode(local_file.kubeconfig.content)
 }
 
